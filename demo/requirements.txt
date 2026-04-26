@@ -1,0 +1,20 @@
+# Voice Conversation System - Dependencies
+
+# Audio I/O
+sounddevice>=0.4.6
+soundfile>=0.12.1
+numpy>=1.24.0
+
+# OpenAI API (audio input support)
+openai>=1.30.0
+
+# Coqui TTS - local voice cloning with XTTS-v2
+# Requires Python 3.9-3.11 and PyTorch
+# Note: this will install PyTorch as a dependency (~2 GB)
+TTS>=0.22.0
+
+# Optional: MP3 playback support (requires ffmpeg on system)
+pydub>=0.25.1
+
+# Optional: generate test audio slots (needs internet)
+gTTS>=2.3.0
