@@ -110,7 +110,6 @@ optimizer = torch.optim.AdamW(
 
 # ============ 训练循环 ============
 print("\n开始训练...")
-best_val_loss = float("inf")
 t0 = time.time()
 
 for iter_num in range(max_iters + 1):
@@ -124,15 +123,7 @@ for iter_num in range(max_iters + 1):
         losses = estimate_loss()
         elapsed = time.time() - t0
         print(f"step {iter_num:5d} | train loss {losses['train']:.4f} | val loss {losses['val']:.4f} | lr {lr:.2e} | elapsed {elapsed:.1f}s")
-        # 保存最佳模型
-        if losses["val"] < best_val_loss:
-            best_val_loss = losses["val"]
-            torch.save({
-                "model": model.state_dict(),
-                "config": config,
-                "iter_num": iter_num,
-                "val_loss": best_val_loss,
-            }, CKPT_PATH)
+        
 
     if iter_num == max_iters:
         break
@@ -144,13 +135,18 @@ for iter_num in range(max_iters + 1):
     loss.backward()
     torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
     optimizer.step()
-    
+
+# 训练结束后保存最终模型
+final_losses = estimate_loss()
 torch.save({
     "model": model.state_dict(),
     "config": config,
     "iter_num": max_iters,
-    "val_loss": losses["val"],
-}, os.path.join(CKPT_DIR, "ckpt_final.pt"))
+    "val_loss": final_losses["val"],
+    "train_loss": final_losses["train"],
+}, CKPT_PATH)
 
-print(f"\n训练完成。最佳 val loss：{best_val_loss:.4f}")
+print(f"\n训练完成。")
+print(f"最终 train loss：{final_losses['train']:.4f}")
+print(f"最终 val loss：{final_losses['val']:.4f}")
 print(f"模型保存在：{CKPT_PATH}")
