@@ -3,7 +3,9 @@
 # Audio I/O
 sounddevice>=0.4.6
 soundfile>=0.12.1
-numpy>=1.24.0
+# TTS 0.22 在 Python<=3.10 会约束 numpy==1.22.0；这里用环境标记避免冲突
+numpy==1.22.0; python_version <= "3.10"
+numpy>=1.24.0; python_version >= "3.11"
 # 读 WAV 由 ai_client 内对 torchaudio.load 的 soundfile 补丁处理，通常无需 torchcodec/系统 FFmpeg
 
 # OpenAI API key from .env (optional)
