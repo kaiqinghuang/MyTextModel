@@ -93,9 +93,23 @@ POST_PLAYBACK_BUFFER = 0.0
 # Playback sample rate for Coqui XTTS-v2 output (model outputs 24000 Hz)
 PLAYBACK_SAMPLE_RATE = 24000
 
-# sounddevice / PortAudio：加大输出缓冲，减轻 CPU 偶发卡顿时的「滋啦」爆音。
-# "high" 通常明显改善；若本机有异样可改为 None（系统默认）或 "low"。
+# 回放后端（杂音仍严重时见下方说明）。
+# — "auto"：macOS 且存在 afplay 时走系统自带的 afplay（与 Finder/Music 同一路径，一般最干净）；
+#   否则用 sounddevice（PortAudio）。
+# — "afplay"：强制用 afplay（仅 macOS 有效）。
+# — "sounddevice"：仅用 sounddevice。
+#
+# 「两个音箱」：在 macOS「音频 MIDI 设置」里建「聚集设备」或多输出装置，再在
+# 「系统设置 → 声音」里把默认输出设为该设备；本项目只走默认输出，不负责编组多个物理端点。
+PLAYBACK_BACKEND = "auto"
+
+# PLAYBACK_BACKEND 为 sounddevice 时生效：加大输出缓冲减轻爆音。「high」仍可试；
+# afplay 路径下该项无效。
 PLAYBACK_LATENCY = "high"
+
+# PLAYBACK_BACKEND 为 sounddevice 时可选：固定输出设备序号（sounddevice.query_devices()）。
+# None = 默认设备。多数双音箱请在系统里做聚集设备，无需填此项。
+PLAYBACK_DEVICE = None
 
 # ============================================================
 # 会话轮数（不再使用预制 audio_slots：每轮由小模型生成 1 句问句并已 TTS 播放）

@@ -9,9 +9,16 @@ Key design:
 """
 
 import io
+import os
+import shutil
+import subprocess
+import sys
+import tempfile
 import time
 import threading
 import wave
+from pathlib import Path
+
 import numpy as np
 
 try:
@@ -27,12 +34,85 @@ except ImportError:
 import config
 
 
-def _sd_play_kwargs() -> dict:
-    """Extra OutputStream kwargs for sd.play (e.g. higher latency → fewer crackles)."""
+def _effective_playback_backend() -> str:
+    """Resolve PLAYBACK_BACKEND: prefer afplay on macOS when available."""
+    raw = getattr(config, "PLAYBACK_BACKEND", "auto")
+    mode = raw.lower().strip() if isinstance(raw, str) else "auto"
+
+    def _afplay_ready() -> bool:
+        return sys.platform == "darwin" and shutil.which("afplay") is not None
+
+    if mode == "sounddevice":
+        return "sounddevice"
+    if mode == "afplay":
+        return "afplay" if _afplay_ready() else "sounddevice"
+    # auto or unknown
+    return "afplay" if _afplay_ready() else "sounddevice"
+
+
+def _sd_output_stream_kwargs() -> dict:
+    """kwargs for sd.play / OutputStream (latency + optional explicit device)."""
+    kwargs: dict = {}
     lat = getattr(config, "PLAYBACK_LATENCY", None)
-    if lat is None:
-        return {}
-    return {"latency": lat}
+    if lat is not None:
+        kwargs["latency"] = lat
+    dev = getattr(config, "PLAYBACK_DEVICE", None)
+    if dev is not None:
+        kwargs["device"] = dev
+    return kwargs
+
+
+def _is_riff_wav_header(data: bytes) -> bool:
+    return len(data) >= 12 and data.startswith(b"RIFF") and data[8:12] == b"WAVE"
+
+
+def _afplay_subprocess(path: str) -> None:
+    subprocess.run(["afplay", path], check=True)
+
+
+def _afplay_from_wav_bytes(wav_bytes: bytes) -> None:
+    fd, path = tempfile.mkstemp(suffix=".wav")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(wav_bytes)
+        _afplay_subprocess(path)
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+def _afplay_from_numpy(data: np.ndarray, sample_rate: int) -> None:
+    fd, path = tempfile.mkstemp(suffix=".wav")
+    os.close(fd)
+    try:
+        sf.write(path, data, sample_rate)
+        _afplay_subprocess(path)
+    finally:
+        try:
+            os.remove(path)
+        except OSError:
+            pass
+
+
+def _afplay_from_file(path: str) -> None:
+    """Play with afplay; transcode to temp WAV if format is not directly supported."""
+    ext = Path(path).suffix.lower()
+    if ext in (".wav", ".aiff", ".aif", ".caf"):
+        _afplay_subprocess(path)
+        return
+    data, sr = sf.read(path, dtype="float32")
+    _afplay_from_numpy(data, sr)
+
+
+def playback_numpy_sync(data: np.ndarray, sample_rate: int) -> None:
+    """Play float audio to the default output (afplay on mac when selected, else sounddevice)."""
+    if _effective_playback_backend() == "afplay":
+        _afplay_from_numpy(data, sample_rate)
+        return
+    sd.play(data, samplerate=sample_rate, **_sd_output_stream_kwargs())
+    sd.wait()
 
 
 class AudioRecorder:
@@ -104,6 +184,22 @@ class AudioPlayer:
         Play a WAV/FLAC/OGG file.
         If blocking=True, this call returns only after playback finishes.
         """
+        if _effective_playback_backend() == "afplay":
+            self._playback_done.clear()
+
+            def body():
+                _afplay_from_file(filepath)
+
+            if blocking:
+                body()
+                self._playback_done.set()
+            else:
+                threading.Thread(
+                    target=lambda: (body(), self._playback_done.set()),
+                    daemon=True,
+                ).start()
+            return
+
         data, sr = sf.read(filepath, dtype="float32")
         self._play_array(data, sr, blocking)
 
@@ -117,6 +213,23 @@ class AudioPlayer:
         Play raw audio bytes (WAV or MP3 format).
         Tries to read format from the byte header.
         """
+        # Coqui WAV：直接交给 afplay，避免 float 往返与 PortAudio 缓冲问题
+        if _effective_playback_backend() == "afplay" and _is_riff_wav_header(audio_bytes):
+            self._playback_done.clear()
+
+            def body():
+                _afplay_from_wav_bytes(audio_bytes)
+
+            if blocking:
+                body()
+                self._playback_done.set()
+            else:
+                threading.Thread(
+                    target=lambda: (body(), self._playback_done.set()),
+                    daemon=True,
+                ).start()
+            return
+
         buf = io.BytesIO(audio_bytes)
         try:
             data, sr = sf.read(buf, dtype="float32")
@@ -133,7 +246,22 @@ class AudioPlayer:
         def on_finished():
             self._playback_done.set()
 
-        sd.play(data, samplerate=sample_rate, **_sd_play_kwargs())
+        if _effective_playback_backend() == "afplay":
+
+            def body():
+                _afplay_from_numpy(data, sample_rate)
+
+            if blocking:
+                body()
+                on_finished()
+            else:
+                threading.Thread(
+                    target=lambda: (body(), on_finished()),
+                    daemon=True,
+                ).start()
+            return
+
+        sd.play(data, samplerate=sample_rate, **_sd_output_stream_kwargs())
         if blocking:
             sd.wait()
             on_finished()
@@ -222,8 +350,7 @@ def record_during_playback_bytes(
 
     recorder.start()
     print("    [mic] Recording started...")
-    sd.play(data, samplerate=sr, **_sd_play_kwargs())
-    sd.wait()
+    playback_numpy_sync(data, sr)
     print(f"    [mic] Stimulus playback done. Listening for {post_buffer}s more...")
 
     time.sleep(post_buffer)
