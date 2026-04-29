@@ -93,6 +93,10 @@ POST_PLAYBACK_BUFFER = 0.0
 # Playback sample rate for Coqui XTTS-v2 output (model outputs 24000 Hz)
 PLAYBACK_SAMPLE_RATE = 24000
 
+# sounddevice / PortAudio：加大输出缓冲，减轻 CPU 偶发卡顿时的「滋啦」爆音。
+# "high" 通常明显改善；若本机有异样可改为 None（系统默认）或 "low"。
+PLAYBACK_LATENCY = "high"
+
 # ============================================================
 # 会话轮数（不再使用预制 audio_slots：每轮由小模型生成 1 句问句并已 TTS 播放）
 # ============================================================

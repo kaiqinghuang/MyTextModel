@@ -27,6 +27,14 @@ except ImportError:
 import config
 
 
+def _sd_play_kwargs() -> dict:
+    """Extra OutputStream kwargs for sd.play (e.g. higher latency → fewer crackles)."""
+    lat = getattr(config, "PLAYBACK_LATENCY", None)
+    if lat is None:
+        return {}
+    return {"latency": lat}
+
+
 class AudioRecorder:
     """Records audio from the default microphone into a WAV buffer."""
 
@@ -125,7 +133,7 @@ class AudioPlayer:
         def on_finished():
             self._playback_done.set()
 
-        sd.play(data, samplerate=sample_rate)
+        sd.play(data, samplerate=sample_rate, **_sd_play_kwargs())
         if blocking:
             sd.wait()
             on_finished()
@@ -214,7 +222,7 @@ def record_during_playback_bytes(
 
     recorder.start()
     print("    [mic] Recording started...")
-    sd.play(data, samplerate=sr)
+    sd.play(data, samplerate=sr, **_sd_play_kwargs())
     sd.wait()
     print(f"    [mic] Stimulus playback done. Listening for {post_buffer}s more...")
 
