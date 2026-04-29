@@ -8,8 +8,8 @@ Voice Conversation System — Main Orchestrator
   3. 将模型返回的文本再 XTTS → 扬声器播放
 
 Usage:
-  python main.py                 # 跑 config.NUM_CONVERSATION_TURNS 轮（默认 5）
-  python main.py --loop          # 无限循环轮次
+  python main.py                 # 默认无限循环
+  python main.py --loop          # 显式指定无限循环（与默认一致）
   python main.py --turns 10       # 共 10 轮
   python main.py --skip 3        # 跳过前 2 轮，从第 3 轮开始（与旧版 --slot 3 对齐）
   python main.py --test-mic      # 测麦克风
@@ -57,6 +57,8 @@ def run_conversation(
 
     # 下一轮将要执行的序号（从 1 起计）；若 --skip 2 则从第 3 轮开始
     next_round = skip_first + 1
+    # 闭环上下文：上一轮 OpenAI 改写后的问题，作为下一轮小模型的隐式前缀 seed。
+    seed_for_next_round: str | None = None
 
     while True:
         if not loop and next_round > n_total:
@@ -72,7 +74,7 @@ def run_conversation(
         # ---------- Step 1: 生成问句 → TTS → 扬声器（仅回放，不向 API 上传录音） ----------
         print(f"\n  [step 1] 生成本地问句并经扬声器播报...")
         try:
-            question_cn = qgen.generate_sentence()
+            question_cn = qgen.generate_sentence(seed_text=seed_for_next_round)
         except Exception as e:
             print(f"  [error] 问句生成失败: {e}")
             continue
@@ -97,7 +99,7 @@ def run_conversation(
         # ---------- Step 2: 同一问句文本 → OpenAI（纯文本，非音频预览模型） ----------
         print(f"\n  [step 2] Sending question text to OpenAI...")
         try:
-            reply_text = ai.send_question_text_get_reply(question_cn)
+            reply_text, seed_zh = ai.send_question_text_get_reply(question_cn)
         except Exception as e:
             print(f"  [error] OpenAI API failed: {e}")
             continue
@@ -105,6 +107,11 @@ def run_conversation(
         if not reply_text or not reply_text.strip():
             print("  [warn] AI returned empty response. Continuing.")
             continue
+
+        # 更新闭环 seed：下一轮小模型将基于这一轮大模型改写结果继续生成。
+        seed_for_next_round = (seed_zh or "").strip()
+        if not seed_for_next_round:
+            seed_for_next_round = reply_text.strip()
 
         # ---------- Step 3–4：英文回复克隆声 ----------
         print(f"\n  [step 3] Synthesizing cloned voice response (English)...")
@@ -172,7 +179,7 @@ def main() -> None:
     parser.add_argument(
         "--loop",
         action="store_true",
-        help="无限循环会话轮次（不再受 --turns 限制）",
+        help="无限循环会话轮次（默认即无限；此参数用于显式声明）",
     )
     parser.add_argument(
         "--turns",
@@ -207,12 +214,13 @@ def main() -> None:
         test_tts()
         return
 
-    turns = args.turns if args.turns is not None else config.NUM_CONVERSATION_TURNS
-    if args.loop:
+    # 默认无限循环；仅在显式给 --turns 时跑固定轮数。
+    turns = args.turns
+    if args.loop or turns is None:
         turns = None
     skip = max(0, args.skip)
 
-    run_conversation(loop=args.loop, num_turns=turns, skip_first=skip)
+    run_conversation(loop=(args.loop or turns is None), num_turns=turns, skip_first=skip)
 
 
 if __name__ == "__main__":

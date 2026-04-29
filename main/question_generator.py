@@ -30,10 +30,10 @@ class QuestionStructureGenerator:
 
     def __init__(
         self,
-        temperature: float = 0.9,
-        top_k: int = 40,
+        temperature: float = 0.7,
+        top_k: int = 24,
         min_length: int = 12,
-        max_length: int = 80,
+        max_length: int = 65,
     ):
         train = _train_dir()
         data_dir = train / "data"
@@ -57,6 +57,9 @@ class QuestionStructureGenerator:
         self.question_boost_range = 8
         self.question_boost_strength = 1.5
         self.inject_ranges = {"middle": (0.20, 0.80)}
+        self.seed_anchor_tail_tokens = 10
+        self.seed_anchor_boost = 1.1
+        self.stop_delay_ratio = 0.6
 
         if torch.backends.mps.is_available():
             self.device = "mps"
@@ -136,6 +139,8 @@ class QuestionStructureGenerator:
         forbid_ids=None,
         boost_ids=None,
         boost_value=0.0,
+        anchor_ids=None,
+        anchor_boost=0.0,
         repetition_penalty=1.3,
         repetition_window=20,
         hard_block_consecutive=3,
@@ -171,6 +176,10 @@ class QuestionStructureGenerator:
         if boost_ids and boost_value > 0:
             for tid in boost_ids:
                 logits[:, tid] += boost_value
+
+        if anchor_ids and anchor_boost > 0:
+            for tid in anchor_ids:
+                logits[:, tid] += anchor_boost
 
         if top_k is not None:
             v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
@@ -372,8 +381,66 @@ class QuestionStructureGenerator:
 
         raise ValueError(f"未知的 position: {position}")
 
-    def generate_sentence(self) -> str:
-        """采样模式与目标长度，生成一句问话（解码为字符串）。"""
+    def _generate_from_seed(self, seed_text: str) -> str:
+        """用 seed_text 作为隐式前缀续写；返回文本不包含 seed 本身。"""
+        seed_ids = self.sp.encode(seed_text.strip())
+        if not seed_ids:
+            return self.generate_sentence(seed_text=None)
+        anchor_ids = set(seed_ids[-self.seed_anchor_tail_tokens :])
+
+        idx = torch.tensor([seed_ids], dtype=torch.long, device=self.device)
+        prefix_len = idx.size(1)
+        target_new_tokens = random.choice(self.sentence_lengths)
+        max_new_tokens = min(self.max_length, max(self.min_length, target_new_tokens))
+        stop_delay_tokens = max(1, int(target_new_tokens * self.stop_delay_ratio))
+
+        for _ in range(max_new_tokens):
+            forbid_now = set(self.forbid_always_ids)
+            new_tokens = idx.size(1) - prefix_len
+            tokens_to_target = target_new_tokens - new_tokens
+
+            if tokens_to_target <= self.question_boost_range:
+                boost = (
+                    self.question_boost_strength
+                    * (self.question_boost_range - tokens_to_target + 1)
+                    / self.question_boost_range
+                )
+                idx_next = self._sample_one_token(
+                    idx,
+                    forbid_ids=forbid_now,
+                    boost_ids=self.stop_ids,
+                    boost_value=boost,
+                    anchor_ids=anchor_ids,
+                    anchor_boost=self.seed_anchor_boost * 0.6,
+                )
+            else:
+                if new_tokens < stop_delay_tokens:
+                    forbid_now.update(self.stop_ids)
+                idx_next = self._sample_one_token(
+                    idx,
+                    forbid_ids=forbid_now,
+                    anchor_ids=anchor_ids,
+                    anchor_boost=self.seed_anchor_boost,
+                )
+
+            idx = torch.cat((idx, idx_next), dim=1)
+            if idx_next.item() in self.stop_ids:
+                break
+
+        generated_ids = idx[0, prefix_len:].tolist()
+        if not generated_ids:
+            return "你会怎么重新问这个问题？"
+
+        text = self.sp.decode(generated_ids).strip()
+        if not (text.endswith("？") or text.endswith("?")):
+            text += "？"
+        return text
+
+    def generate_sentence(self, seed_text: str | None = None) -> str:
+        """生成一句问话；若提供 seed_text，则作为隐式前缀续写。"""
+        if seed_text and seed_text.strip():
+            return self._generate_from_seed(seed_text)
+
         pattern = random.choice(self.question_patterns)
         target_length = random.choice(self.sentence_lengths)
 

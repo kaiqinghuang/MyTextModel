@@ -113,8 +113,8 @@ class ConversationAI:
         self.client = OpenAI(api_key=config.OPENAI_API_KEY)
         self.history: list[dict] = []  # conversation message history
 
-    def send_question_text_get_reply(self, question_text: str) -> str:
-        """把本轮问句正文发给 OpenAI，得到模型回复（通常为英文复述问句）。"""
+    def send_question_text_get_reply(self, question_text: str) -> tuple[str, str]:
+        """返回：(英文重问, 中文seed重问)。"""
         messages = [
             {"role": "system", "content": config.SYSTEM_PROMPT},
             *self._trimmed_history(),
@@ -130,12 +130,25 @@ class ConversationAI:
         )
 
         assistant_text = response.choices[0].message.content or ""
-        print(f"    [openai] Response: {assistant_text}")
+        print(f"    [openai] English response: {assistant_text}")
+
+        zh_messages = [
+            {"role": "system", "content": config.SEED_TRANSLATE_PROMPT},
+            {"role": "user", "content": assistant_text},
+        ]
+        zh_response = self.client.chat.completions.create(
+            model=config.OPENAI_CHAT_MODEL,
+            messages=zh_messages,
+            max_tokens=200,
+            temperature=0.2,
+        )
+        zh_seed = (zh_response.choices[0].message.content or "").strip()
+        print(f"    [openai] Chinese seed: {zh_seed}")
 
         self.history.append({"role": "user", "content": question_text})
         self.history.append({"role": "assistant", "content": assistant_text})
 
-        return assistant_text
+        return assistant_text, zh_seed
 
     def _trimmed_history(self) -> list[dict]:
         """Return the last N turns of history to stay within context limits."""
