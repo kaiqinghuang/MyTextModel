@@ -5,12 +5,19 @@
 """
 import re
 import json
+import sys
+from pathlib import Path
 import jieba
 import sentencepiece as spm
 
-MARKED_PATH = "data/marked.txt"
-TOKENIZER_PATH = "data/tokenizer.model"
-OUTPUT_PATH = "data/patterns.json"
+_TRAIN_ROOT = Path(__file__).resolve().parent.parent
+if str(_TRAIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_TRAIN_ROOT))
+from _paths import DATA_DIR
+
+MARKED_PATH = DATA_DIR / "marked.txt"
+TOKENIZER_PATH = DATA_DIR / "tokenizer.model"
+OUTPUT_PATH = DATA_DIR / "patterns.json"
 
 # 疑问词词典（不追求完备，覆盖常见用法即可）
 QUESTION_WORDS = {
@@ -29,7 +36,7 @@ QUESTION_WORDS = {
 
 # 加载分词器
 sp = spm.SentencePieceProcessor()
-sp.load(TOKENIZER_PATH)
+sp.load(str(TOKENIZER_PATH))
 
 
 def find_question_word(text):

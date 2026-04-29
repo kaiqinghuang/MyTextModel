@@ -2,13 +2,20 @@
 推理脚本：从<Q>开始生成问句
 """
 import os
+import sys
 import torch
 import sentencepiece as spm
+from pathlib import Path
+
+_TRAIN_DIR = Path(__file__).resolve().parent / "train"
+if str(_TRAIN_DIR) not in sys.path:
+    sys.path.insert(0, str(_TRAIN_DIR))
+from _paths import DATA_DIR, CHECKPOINTS_DIR
 from model import GPT, GPTConfig
 
 # ============ 配置 ============
-CKPT_PATH = "checkpoints/ckpt.pt"
-TOKENIZER_PATH = "data/tokenizer.model"
+CKPT_PATH = str(CHECKPOINTS_DIR / "ckpt.pt")
+TOKENIZER_PATH = str(DATA_DIR / "tokenizer.model")
 
 # 生成参数
 num_samples = 10           # 生成多少个问句

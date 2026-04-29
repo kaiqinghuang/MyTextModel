@@ -2,16 +2,23 @@
 阶段 2 微调：从阶段 1 checkpoint 继续训练，强化问句结构
 """
 import os
+import sys
 import time
+from pathlib import Path
 import numpy as np
 import torch
+
+_TRAIN_ROOT = Path(__file__).resolve().parent.parent
+if str(_TRAIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_TRAIN_ROOT))
+from _paths import DATA_DIR, CHECKPOINTS_DIR
 from model import GPT, GPTConfig
 
 # ============ 配置 ============
-DATA_PATH_FULL = "data/train.bin"            # 阶段 1 的全文数据
-DATA_PATH_Q = "data/questions.bin"           # 阶段 2 的问句数据
-CKPT_LOAD = "checkpoints/ckpt.pt"            # 加载阶段 1 模型
-CKPT_SAVE = "checkpoints/ckpt_finetuned.pt"  # 保存阶段 2 模型
+DATA_PATH_FULL = DATA_DIR / "train.bin"            # 阶段 1 的全文数据
+DATA_PATH_Q = DATA_DIR / "questions.bin"           # 阶段 2 的问句数据
+CKPT_LOAD = CHECKPOINTS_DIR / "ckpt.pt"            # 加载阶段 1 模型
+CKPT_SAVE = CHECKPOINTS_DIR / "ckpt_finetuned.pt"  # 保存阶段 2 模型
 
 # 微调超参数（注意：和阶段 1 不同）
 batch_size = 16              # 比阶段 1 小（数据量少）
@@ -42,14 +49,14 @@ else:
     print("使用 CPU")
 
 # ============ 加载数据 ============
-data_full = np.fromfile(DATA_PATH_FULL, dtype=np.uint16)
-data_q = np.fromfile(DATA_PATH_Q, dtype=np.uint16)
+data_full = np.fromfile(str(DATA_PATH_FULL), dtype=np.uint16)
+data_q = np.fromfile(str(DATA_PATH_Q), dtype=np.uint16)
 print(f"全文数据 token 数：{len(data_full)}")
 print(f"问句数据 token 数：{len(data_q)}")
 
 # ============ 加载阶段 1 模型 ============
-print(f"\n加载阶段 1 checkpoint：{CKPT_LOAD}")
-ckpt = torch.load(CKPT_LOAD, map_location=device, weights_only=False)
+print(f"\n加载阶段 1 checkpoint：{CKPT_LOAD!s}")
+ckpt = torch.load(str(CKPT_LOAD), map_location=device, weights_only=False)
 config = ckpt["config"]
 print(f"原 val loss：{ckpt['val_loss']:.4f}")
 print(f"原训练步数：{ckpt['iter_num']}")
@@ -184,9 +191,9 @@ torch.save({
     "val_loss": final_losses["full"],
     "q_loss": final_losses["questions"],
     "stage": "finetuned",
-}, CKPT_SAVE)
+}, str(CKPT_SAVE))
 
 print(f"\n微调完成。")
 print(f"最终问句 loss：{final_losses['questions']:.4f}")
 print(f"最终全文 loss：{final_losses['full']:.4f}")
-print(f"模型保存在：{CKPT_SAVE}")
+print(f"模型保存在：{CKPT_SAVE!s}")

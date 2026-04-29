@@ -2,15 +2,22 @@
 训练脚本
 """
 import os
+import sys
 import time
+from pathlib import Path
 import numpy as np
 import torch
+
+_TRAIN_ROOT = Path(__file__).resolve().parent
+if str(_TRAIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_TRAIN_ROOT))
+from _paths import DATA_DIR, CHECKPOINTS_DIR
 from model import GPT, GPTConfig
 
 # ============ 配置 ============
-DATA_PATH = "data/train.bin"
-CKPT_DIR = "checkpoints"
-CKPT_PATH = os.path.join(CKPT_DIR, "ckpt.pt")
+DATA_PATH = DATA_DIR / "train.bin"
+CKPT_DIR = CHECKPOINTS_DIR
+CKPT_PATH = CKPT_DIR / "ckpt.pt"
 
 # 模型超参数
 config = GPTConfig(
@@ -49,7 +56,7 @@ else:
     print("使用 CPU")
 
 # ============ 数据加载 ============
-data = np.fromfile(DATA_PATH, dtype=np.uint16)
+data = np.fromfile(str(DATA_PATH), dtype=np.uint16)
 print(f"数据加载完成，token总数：{len(data)}")
 
 # 90% 训练，10% 验证
@@ -144,7 +151,7 @@ torch.save({
     "iter_num": max_iters,
     "val_loss": final_losses["val"],
     "train_loss": final_losses["train"],
-}, CKPT_PATH)
+}, str(CKPT_PATH))
 
 print(f"\n训练完成。")
 print(f"最终 train loss：{final_losses['train']:.4f}")

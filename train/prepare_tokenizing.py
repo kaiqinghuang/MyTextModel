@@ -1,7 +1,14 @@
+import sys
+from pathlib import Path
 import sentencepiece as spm
 
-INPUT_PATH = "data/marked.txt"
-MODEL_PREFIX = "data/tokenizer"
+_TRAIN_ROOT = Path(__file__).resolve().parent
+if str(_TRAIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_TRAIN_ROOT))
+from _paths import DATA_DIR
+
+INPUT_PATH = str(DATA_DIR / "marked.txt")
+MODEL_PREFIX = str(DATA_DIR / "tokenizer")
 
 spm.SentencePieceTrainer.train(
     input=INPUT_PATH,
@@ -20,7 +27,7 @@ print(f"分词器训练完成，输出：{MODEL_PREFIX}.model 和 {MODEL_PREFIX}
 
 # 验证：加载分词器，编码几个样本
 sp = spm.SentencePieceProcessor()
-sp.load(f"{MODEL_PREFIX}.model")
+sp.load(MODEL_PREFIX + ".model")
 
 print(f"\n词表大小：{sp.vocab_size()}")
 print(f"<Q>的token id：{sp.piece_to_id('<Q>')}")

@@ -2,15 +2,22 @@
 从 marked.txt 抽取所有问句，编码成 questions.bin
 用于阶段 2 微调
 """
+import sys
+from pathlib import Path
 import numpy as np
 import sentencepiece as spm
 
-MARKED_PATH = "data/marked.txt"
-TOKENIZER_PATH = "data/tokenizer.model"
-OUTPUT_PATH = "data/questions.bin"
+_TRAIN_ROOT = Path(__file__).resolve().parent.parent
+if str(_TRAIN_ROOT) not in sys.path:
+    sys.path.insert(0, str(_TRAIN_ROOT))
+from _paths import DATA_DIR
+
+MARKED_PATH = DATA_DIR / "marked.txt"
+TOKENIZER_PATH = DATA_DIR / "tokenizer.model"
+OUTPUT_PATH = DATA_DIR / "questions.bin"
 
 sp = spm.SentencePieceProcessor()
-sp.load(TOKENIZER_PATH)
+sp.load(str(TOKENIZER_PATH))
 
 # 读取所有问句
 questions = []
@@ -37,8 +44,8 @@ print(f"编码后 <Q> 出现次数：{q_count_in_ids}（应该 ≈ {len(question
 
 # 保存
 ids_array = np.array(ids, dtype=np.uint16)
-ids_array.tofile(OUTPUT_PATH)
-print(f"\n保存到：{OUTPUT_PATH}")
+ids_array.tofile(str(OUTPUT_PATH))
+print(f"\n保存到：{OUTPUT_PATH!s}")
 print(f"文件大小：{ids_array.nbytes/1024:.2f} KB")
 
 # 抽几个样本展示

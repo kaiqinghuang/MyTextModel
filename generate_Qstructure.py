@@ -13,17 +13,24 @@
    g. 接近目标长度时软引导问号收尾
 """
 import os
+import sys
 import random
 import json
+from pathlib import Path
 import torch
 import torch.nn.functional as F
 import sentencepiece as spm
+
+_TRAIN_DIR = Path(__file__).resolve().parent / "train"
+if str(_TRAIN_DIR) not in sys.path:
+    sys.path.insert(0, str(_TRAIN_DIR))
+from _paths import DATA_DIR, CHECKPOINTS_DIR
 from model import GPT, GPTConfig
 
 # ============ 配置 ============
-CKPT_PATH = "checkpoints/ckpt.pt"
-TOKENIZER_PATH = "data/tokenizer.model"
-PATTERNS_PATH = "data/patterns.json"
+CKPT_PATH = str(CHECKPOINTS_DIR / "ckpt.pt")
+TOKENIZER_PATH = str(DATA_DIR / "tokenizer.model")
+PATTERNS_PATH = str(DATA_DIR / "patterns.json")
 
 NUM_SAMPLES = 10
 TEMPERATURE = 0.9
