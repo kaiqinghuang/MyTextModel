@@ -14,6 +14,9 @@ python-dotenv>=1.0.0
 # OpenAI API (audio input support)
 openai>=1.30.0
 
+# 小 GPT 问句生成（tokenizer.model / QuestionStructureGenerator）
+sentencepiece>=0.2.0
+
 # Coqui TTS - local voice cloning with XTTS-v2
 # Requires Python 3.9-3.11 and PyTorch
 # Note: this will install PyTorch as a dependency (~2 GB)

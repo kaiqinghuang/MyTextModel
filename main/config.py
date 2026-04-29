@@ -4,11 +4,17 @@ Fill in your API keys and adjust settings before running.
 """
 
 import os
+from pathlib import Path
+
+# 无论从仓库根目录还是 main/ 目录运行，都能找到项目根目录的 .env
+_ROOT = Path(__file__).resolve().parent.parent
+_ENV_FILE = _ROOT / ".env"
 
 try:
     from dotenv import load_dotenv
 
-    load_dotenv()
+    load_dotenv(_ENV_FILE)
+    load_dotenv()  # 若当前工作目录另有 .env，可覆盖补充
 except ImportError:
     # 未安装 python-dotenv 时跳过；请用 pip install python-dotenv 或自行 export OPENAI_API_KEY
     pass
