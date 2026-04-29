@@ -14,11 +14,13 @@ Usage:
   python main.py --skip 3        # 跳过前 2 轮，从第 3 轮开始（与旧版 --slot 3 对齐）
   python main.py --test-mic      # 测麦克风
   python main.py --test-tts      # 测 Coqui TTS
+  python main.py --test-tts --save-tts-dir ./tts_debug  # 第二步：存盘后用系统播放器试听
 """
 
 import argparse
 import sys
 import time
+from pathlib import Path
 
 import config
 from ai_client import ConversationAI, VoiceCloneTTS
@@ -150,10 +152,24 @@ def test_microphone() -> None:
     print("[test] Done.")
 
 
-def test_tts() -> None:
-    """Quick test: synthesize a short sentence with Coqui XTTS-v2."""
+def _save_tts_debug_wav(save_dir: str | None, filename: str, wav_bytes: bytes) -> None:
+    if not save_dir:
+        return
+    out_dir = Path(save_dir).expanduser().resolve()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = out_dir / filename
+    path.write_bytes(wav_bytes)
+    print(f"  [test] Saved WAV: {path}")
+
+
+def test_tts(save_dir: str | None = None) -> None:
+    """Quick test: synthesize short lines with Coqui XTTS-v2; optional WAV export for OS playback."""
     print("\n[test] Coqui XTTS-v2 TTS test...")
     print(f"[test] Reference voice: {config.COQUI_REFERENCE_WAV}")
+    if save_dir:
+        print(f"[test] WAV 另存目录: {Path(save_dir).expanduser().resolve()}")
+        print("[test] 请用 Finder 双击或用「音乐」播放这些文件，判断是否仍有滋啦声。\n")
+
     tts = VoiceCloneTTS()
     player = AudioPlayer()
 
@@ -161,6 +177,7 @@ def test_tts() -> None:
     print(f"[test] Synthesizing: \"{text}\"")
 
     audio = tts.synthesize(text)
+    _save_tts_debug_wav(save_dir, "step2_en_sentence1.wav", audio)
     print(f"[test] Got {len(audio)} bytes. Playing...")
     player.play_bytes(audio, sample_rate=config.PLAYBACK_SAMPLE_RATE, blocking=True)
     print("[test] Sentence 1 done.")
@@ -168,7 +185,16 @@ def test_tts() -> None:
     text2 = "Sometimes the quietest moments hold the deepest meaning."
     print(f"\n[test] Synthesizing second sentence (cached voice)...")
     audio2 = tts.synthesize(text2)
+    _save_tts_debug_wav(save_dir, "step2_en_sentence2.wav", audio2)
     player.play_bytes(audio2, sample_rate=config.PLAYBACK_SAMPLE_RATE, blocking=True)
+    print("[test] Sentence 2 done.")
+
+    text_zh = "今天出门前需要带伞吗？"
+    print(f"\n[test] 中文问句样本（与会话第一步同语言设定）...")
+    audio_zh = tts.synthesize(text_zh, language=config.QUESTION_TTS_LANGUAGE)
+    _save_tts_debug_wav(save_dir, "step2_zh_question.wav", audio_zh)
+    print(f"[test] Playing 中文...")
+    player.play_bytes(audio_zh, sample_rate=config.PLAYBACK_SAMPLE_RATE, blocking=True)
     print("[test] Done.")
 
 
@@ -203,15 +229,25 @@ def main() -> None:
         action="store_true",
         help="Test Coqui XTTS-v2 voice clone synthesis",
     )
+    parser.add_argument(
+        "--save-tts-dir",
+        type=str,
+        default=None,
+        metavar="DIR",
+        help="仅与 --test-tts 配合：把每次合成的 WAV 存到 DIR，便于系统播放器试听（第二步排障）",
+    )
 
     args = parser.parse_args()
+
+    if args.save_tts_dir and not args.test_tts:
+        parser.error("--save-tts-dir 仅能配合 --test-tts 使用")
 
     if args.test_mic:
         test_microphone()
         return
 
     if args.test_tts:
-        test_tts()
+        test_tts(save_dir=args.save_tts_dir)
         return
 
     # 默认无限循环；仅在显式给 --turns 时跑固定轮数。
