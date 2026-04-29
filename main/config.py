@@ -4,9 +4,14 @@ Fill in your API keys and adjust settings before running.
 """
 
 import os
-from dotenv import load_dotenv
 
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+
+    load_dotenv()
+except ImportError:
+    # 未安装 python-dotenv 时跳过；请用 pip install python-dotenv 或自行 export OPENAI_API_KEY
+    pass
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # ============================================================
@@ -24,8 +29,11 @@ COQUI_REFERENCE_WAV = "reference_voice.wav"
 # XTTS-v2 model name (downloaded automatically on first run)
 COQUI_MODEL_NAME = "tts_models/multilingual/multi-dataset/xtts_v2"
 
-# Language for synthesis
+# Language for synthesis (OpenAI 回复朗读，一般为英文）
 COQUI_LANGUAGE = "en"
+
+# 本地小模型生成问句的中文 TTS（XTTS-v2 multilingual 语言码）
+QUESTION_TTS_LANGUAGE = "zh-cn"
 
 # Device for Coqui XTTS-v2
 # NVIDIA GPU: "cuda"  |  Mac Apple Silicon: "mps"  |  CPU only: "cpu"
@@ -45,28 +53,18 @@ COQUI_TOP_K = 50
 COQUI_TOP_P = 0.85
 
 # ============================================================
-# OpenAI Model Settings
+# OpenAI Model Settings（纯文本对话，不使用音频预览 API）
 # ============================================================
-OPENAI_MODEL = "gpt-4o-audio-preview"
+OPENAI_CHAT_MODEL = "gpt-4o"
 
-# System prompt: serene, calm, peaceful conversational style
-SYSTEM_PROMPT = """You are a calm, serene presence in a conversation. Your responses embody:
+# System prompt：把用户消息里的问句用你的理解再问一遍（给后续英文 TTS 朗读）
+SYSTEM_PROMPT = """根据你的理解重新问出这个问题。
 
-- Tranquility: You speak as if sitting beside a still lake at dawn. Never rushed, never anxious.
-- Gentleness: Every word is chosen with care and softness. You do not raise your voice in tone or urgency.
-- Equanimity: Nothing disturbs your inner peace. Whether the topic is joyful or heavy, you respond with the same quiet composure.
-- Warmth without excess: You are kind, but not effusive. Your warmth is like sunlight filtered through clouds.
-- Brevity with depth: You prefer fewer words that carry meaning over long explanations. Silence is comfortable for you.
+「用户」消息里会直接给出一句问句文本（常为中文）。请理解这句话真正在问什么，再用你自己的措辞把同一意思再问一遍；必须是问句。
 
-Style guidelines:
-- Keep responses concise (1 to 3 sentences typically, unless the topic truly calls for more).
-- Use a measured, unhurried pace. Imagine each sentence has a breath between them.
-- Avoid exclamation marks, ALL CAPS, or any markers of excitement or alarm.
-- When you hear ambient sounds or multiple voices, simply acknowledge what you perceive with calm curiosity.
-- You may gently reflect on what you hear, offer a quiet observation, or ask a soft question.
-- Respond in English.
+只输出你重新问出的这一句，不要前缀或解释。
 
-You are having a live voice conversation. You will hear audio that may include a primary speaker and sometimes background voices or ambient sounds. Treat everything you hear as part of the natural environment of this conversation."""
+为与下游语音合成一致，请用英文写出这句问句；若难以理解则简短用英文说明。"""
 
 # ============================================================
 # Audio Settings
@@ -85,10 +83,9 @@ POST_PLAYBACK_BUFFER = 0.0
 PLAYBACK_SAMPLE_RATE = 24000
 
 # ============================================================
-# Audio Slots
+# 会话轮数（不再使用预制 audio_slots：每轮由小模型生成 1 句问句并已 TTS 播放）
 # ============================================================
-AUDIO_SLOTS_DIR = "audio_slots"
-NUM_SLOTS = 5
+NUM_CONVERSATION_TURNS = 5
 
 # ============================================================
 # Conversation Settings

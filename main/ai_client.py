@@ -1,11 +1,9 @@
 """
-AI Client - OpenAI (audio-in, text-out) + Coqui XTTS-v2 (text-in, cloned-voice-out).
+AI Client - OpenAI 纯文本问答 + Coqui XTTS-v2 本地克隆声。
 
 Flow per turn:
-  1. Send recorded WAV audio to OpenAI  gpt-4o-audio-preview  (audio input)
-  2. Receive text response from the model
-  3. Send text to Coqui XTTS-v2 for local voice-cloned TTS
-  4. Return synthesized audio bytes ready for playback
+  1. 将「问句文本」发往 OpenAI 聊天补全得到英文复述问句（不经过音频 API）。
+  2. 将该英文文本送入 Coqui XTTS-v2 合成并扬声器播放。
 
 Voice cloning approach:
   - On startup, the reference voice WAV is analyzed ONCE to extract speaker
@@ -14,85 +12,128 @@ Voice cloning approach:
   - No re-analysis of the reference audio on each sentence.
 """
 
-import base64
 import io
 import os
 import wave
 import tempfile
 import numpy as np
+import torch
 
 from openai import OpenAI
 
 import config
 
 
+def _patch_torch_load_for_coqui_tts() -> None:
+    """PyTorch 2.6+ 将 torch.load 默认改为 weights_only=True；Coqui XTTS 的 checkpoint
+    需反序列化含 XttsConfig 等类的 pickle，必须允许完整载入。仅对未显式传 weights_only 的调用补默认值。
+    """
+    _orig_load = torch.load
+
+    def _load(*args, **kwargs):  # type: ignore[misc]
+        kwargs.setdefault("weights_only", False)
+        return _orig_load(*args, **kwargs)
+
+    torch.load = _load  # noqa: WPS442
+
+
+_patch_torch_load_for_coqui_tts()
+
+
+def _patch_torchaudio_load_via_soundfile() -> None:
+    """
+    torchaudio 2.9+ 默认走 TorchCodec → 依赖系统 FFmpeg；Homebrew/ffmpeg 不全时常报 libavutil 缺失。
+    Coqui XTTS 对 reference 仅 torchaudio.load(本地.wav)，可用 soundfile 读 WAV，避免 FFmpeg/TorchCodec。
+    """
+    try:
+        import soundfile as sf
+    except ImportError:
+        return
+
+    try:
+        import torchaudio
+    except ImportError:
+        return
+
+    _orig_load = torchaudio.load
+
+    def _load(uri, frame_offset=0, num_frames=-1, normalize=True, channels_first=True, format=None,
+              buffer_size=4096, backend=None):
+        path_str = os.fspath(uri) if isinstance(uri, (str, os.PathLike)) else None
+
+        skip_codec = (
+            path_str is not None
+            and path_str.lower().endswith(".wav")
+            and not path_str.startswith(("http://", "https://"))
+        )
+
+        if not skip_codec:
+            return _orig_load(
+                uri,
+                frame_offset=frame_offset,
+                num_frames=num_frames,
+                normalize=normalize,
+                channels_first=channels_first,
+                format=format,
+                buffer_size=buffer_size,
+                backend=backend,
+            )
+
+        data, sr = sf.read(path_str, dtype="float32", always_2d=True)
+
+        wav = torch.from_numpy(np.ascontiguousarray(data.T))
+
+        if frame_offset != 0:
+            wav = wav[:, frame_offset:]
+        if num_frames is not None and num_frames >= 0:
+            wav = wav[:, :num_frames]
+
+        if not channels_first:
+            wav = wav.transpose(0, 1)
+
+        return wav, sr
+
+    torchaudio.load = _load  # noqa: WPS442
+
+
+_patch_torchaudio_load_via_soundfile()
+
+
 # ============================================================
-# OpenAI: Audio -> Text
+# OpenAI: 纯文本对话
 # ============================================================
 
 class ConversationAI:
     """
-    Manages the OpenAI conversation with audio input support.
-    Maintains conversation history so the AI has context across turns.
+    使用普通 chat.completions（文本），不参与麦克风/音频 API。
+    维护会话历史以防多轮需要上下文。
     """
 
     def __init__(self):
         self.client = OpenAI(api_key=config.OPENAI_API_KEY)
         self.history: list[dict] = []  # conversation message history
 
-    def send_audio_get_text(self, wav_bytes: bytes) -> str:
-        """
-        Send WAV audio to OpenAI and get a text response.
-
-        The audio is base64-encoded and sent as an `input_audio` content block,
-        which lets the model hear the audio directly without a separate STT step.
-        """
-        # Base64 encode the WAV
-        audio_b64 = base64.b64encode(wav_bytes).decode("utf-8")
-
-        # Build the user message with audio content
-        user_message = {
-            "role": "user",
-            "content": [
-                {
-                    "type": "input_audio",
-                    "input_audio": {
-                        "data": audio_b64,
-                        "format": "wav",
-                    },
-                }
-            ],
-        }
-
-        # Build full messages list: system + history + current
+    def send_question_text_get_reply(self, question_text: str) -> str:
+        """把本轮问句正文发给 OpenAI，得到模型回复（通常为英文复述问句）。"""
         messages = [
             {"role": "system", "content": config.SYSTEM_PROMPT},
             *self._trimmed_history(),
-            user_message,
+            {"role": "user", "content": question_text},
         ]
 
-        # Call the API
-        print("    [openai] Sending audio to model...")
+        print("    [openai] Sending question text...")
         response = self.client.chat.completions.create(
-            model=config.OPENAI_MODEL,
+            model=config.OPENAI_CHAT_MODEL,
             messages=messages,
-            modalities=["text"],
             max_tokens=300,
             temperature=0.7,
         )
 
-        assistant_text = response.choices[0].message.content
+        assistant_text = response.choices[0].message.content or ""
         print(f"    [openai] Response: {assistant_text}")
 
-        # Save to history (store text summaries, not raw audio, to save tokens)
-        self.history.append({
-            "role": "user",
-            "content": "[Audio input from speaker and environment]",
-        })
-        self.history.append({
-            "role": "assistant",
-            "content": assistant_text,
-        })
+        self.history.append({"role": "user", "content": question_text})
+        self.history.append({"role": "assistant", "content": assistant_text})
 
         return assistant_text
 
@@ -214,17 +255,20 @@ class VoiceCloneTTS:
 
         print(f"    [coqui] Speaker embeddings cached. Ready for synthesis.")
 
-    def synthesize(self, text: str) -> bytes:
+    def synthesize(self, text: str, language: str | None = None) -> bytes:
         """
         Synthesize text into speech using the cloned voice.
         Uses the high-level tts_to_file API which handles text splitting
         and inference internally for maximum stability.
         Returns WAV audio bytes.
+
+        language: XTTS-v2 语言代码；默认使用 config.COQUI_LANGUAGE。
+                  生成中文问句刺激音时可传入 config.QUESTION_TTS_LANGUAGE（如 zh-cn）。
         """
         print(f"    [coqui] Synthesizing: \"{text[:80]}{'...' if len(text) > 80 else ''}\"")
-        return self._synthesize_stable(text)
+        return self._synthesize_stable(text, language=language)
 
-    def _synthesize_stable(self, text: str) -> bytes:
+    def _synthesize_stable(self, text: str, language: str | None = None) -> bytes:
         """
         Stable path: uses high-level TTS API which handles text splitting
         and full_inference internally. Re-reads reference audio each call
@@ -235,10 +279,11 @@ class VoiceCloneTTS:
             tmp_path = tmp.name
 
         try:
+            lang = language if language is not None else config.COQUI_LANGUAGE
             self.model.tts_to_file(
                 text=text,
                 speaker_wav=self.reference_wav,
-                language=config.COQUI_LANGUAGE,
+                language=lang,
                 file_path=tmp_path,
             )
 

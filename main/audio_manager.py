@@ -194,3 +194,32 @@ def record_during_playback(
     wav_bytes = recorder.stop()
     print(f"    [mic] Recording stopped. Captured {len(wav_bytes)} bytes.")
     return wav_bytes
+
+
+def record_during_playback_bytes(
+    stimulus_wav_bytes: bytes,
+    post_buffer: float = config.POST_PLAYBACK_BUFFER,
+) -> bytes:
+    """
+    与 record_during_playback 相同，但「刺激音」来自内存中的 WAV bytes
+    （例如由 TTS 合成的问句）。
+    """
+    buf = io.BytesIO(stimulus_wav_bytes)
+    try:
+        data, sr = sf.read(buf, dtype="float32")
+    except Exception as e:
+        raise ValueError(f"无法从内存解析 WAV（需为 soundfile 可读格式）: {e}") from e
+
+    recorder = AudioRecorder()
+
+    recorder.start()
+    print("    [mic] Recording started...")
+    sd.play(data, samplerate=sr)
+    sd.wait()
+    print(f"    [mic] Stimulus playback done. Listening for {post_buffer}s more...")
+
+    time.sleep(post_buffer)
+
+    wav_bytes = recorder.stop()
+    print(f"    [mic] Recording stopped. Captured {len(wav_bytes)} bytes.")
+    return wav_bytes
