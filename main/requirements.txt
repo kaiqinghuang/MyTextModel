@@ -27,5 +27,8 @@ transformers>=4.38,<4.46
 # Optional: MP3 playback support (requires ffmpeg on system)
 pydub>=0.25.1
 
+# Optional: Arduino serial trigger for pump control
+pyserial>=3.5
+
 # Optional: generate test audio slots (needs internet)
 gTTS>=2.3.0

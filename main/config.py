@@ -111,6 +111,12 @@ PLAYBACK_LATENCY = "high"
 # None = 默认设备。多数双音箱请在系统里做聚集设备，无需填此项。
 PLAYBACK_DEVICE = None
 
+# Arduino pump trigger settings (optional).
+# Set ARDUINO_SERIAL_PORT to your board port, e.g. "/dev/tty.usbmodem1101".
+# Empty/None disables pump trigger without affecting conversation flow.
+ARDUINO_SERIAL_PORT = ""
+ARDUINO_BAUDRATE = 9600
+
 # ============================================================
 # 会话轮数（不再使用预制 audio_slots：每轮由小模型生成 1 句问句并已 TTS 播放）
 # ============================================================

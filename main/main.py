@@ -18,6 +18,7 @@ Usage:
 """
 
 import argparse
+import importlib
 import sys
 import time
 from pathlib import Path
@@ -25,6 +26,60 @@ from pathlib import Path
 import config
 from ai_client import ConversationAI, VoiceCloneTTS
 from audio_manager import AudioRecorder, AudioPlayer
+
+try:
+    serial = importlib.import_module("serial")
+except Exception:
+    serial = None
+
+
+class PumpTrigger:
+    """Optional Arduino serial trigger for water pumps."""
+
+    def __init__(self, port: str, baudrate: int = 9600):
+        self.port = (port or "").strip()
+        self.baudrate = baudrate
+        self._ser = None
+        self._enabled = bool(self.port)
+
+        if not self._enabled:
+            print("  [pump] Disabled (ARDUINO_SERIAL_PORT is empty).")
+            return
+        if serial is None:
+            print("  [pump] pyserial not installed. Install with: pip install pyserial")
+            self._enabled = False
+            return
+        try:
+            self._ser = serial.Serial(self.port, self.baudrate, timeout=0.2)
+            time.sleep(2.0)  # Arduino reset window after opening serial.
+            print(f"  [pump] Connected: {self.port} @ {self.baudrate}")
+        except Exception as e:
+            print(f"  [pump] Connect failed ({self.port}): {e}")
+            self._enabled = False
+
+    def trigger_pump_1(self) -> None:
+        self._send("1\n", "DO_PIN 9")
+
+    def trigger_pump_2(self) -> None:
+        self._send("2\n", "DO_PIN_2 10")
+
+    def _send(self, payload: str, label: str) -> None:
+        if not self._enabled or self._ser is None:
+            return
+        try:
+            self._ser.write(payload.encode("ascii"))
+            self._ser.flush()
+            print(f"  [pump] Triggered {label}")
+        except Exception as e:
+            print(f"  [pump] Trigger failed ({label}): {e}")
+
+    def close(self) -> None:
+        if self._ser is not None:
+            try:
+                self._ser.close()
+            except Exception:
+                pass
+            self._ser = None
 
 
 def run_conversation(
@@ -56,6 +111,10 @@ def run_conversation(
     ai = ConversationAI()
     tts = VoiceCloneTTS()
     player = AudioPlayer()
+    pump = PumpTrigger(
+        port=getattr(config, "ARDUINO_SERIAL_PORT", ""),
+        baudrate=getattr(config, "ARDUINO_BAUDRATE", 9600),
+    )
 
     # 下一轮将要执行的序号（从 1 起计）；若 --skip 2 则从第 3 轮开始
     next_round = skip_first + 1
@@ -93,6 +152,8 @@ def run_conversation(
             continue
 
         try:
+            # 小模型问句开始发声时，触发 DO_PIN(9) 1s 脉冲
+            pump.trigger_pump_1()
             player.play_bytes(stimulus_wav, blocking=True)
         except Exception as e:
             print(f"  [error] 问句播放失败: {e}")
@@ -126,6 +187,8 @@ def run_conversation(
 
         print(f"\n  [step 4] Playing AI response...")
         try:
+            # OpenAI 问句开始发声时，触发 DO_PIN_2(10) 1s 脉冲
+            pump.trigger_pump_2()
             player.play_bytes(reply_audio, blocking=True)
         except Exception as e:
             print(f"  [error] Playback failed: {e}")
@@ -134,6 +197,7 @@ def run_conversation(
 
         next_round += 1
 
+    pump.close()
     print("\n[exit] Session ended. Goodbye.\n")
 
 

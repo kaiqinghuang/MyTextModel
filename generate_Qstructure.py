@@ -32,7 +32,7 @@ CKPT_PATH = str(CHECKPOINTS_DIR / "ckpt.pt")
 TOKENIZER_PATH = str(DATA_DIR / "tokenizer.model")
 PATTERNS_PATH = str(DATA_DIR / "patterns.json")
 
-NUM_SAMPLES = 10
+NUM_SAMPLES = 1
 TEMPERATURE = 0.9
 TOP_K = 40
 
