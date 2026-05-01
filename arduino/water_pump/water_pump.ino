@@ -4,7 +4,7 @@
 
 unsigned long pump1OffAt = 0;
 unsigned long pump2OffAt = 0;
-const unsigned long PULSE_MS = 4000; // each trigger keeps pump ON for 4s
+const unsigned long PULSE_MS = 1000; // each trigger keeps pump ON for 4s
 
 void triggerPump(uint8_t pin, unsigned long &offAt)
 {
