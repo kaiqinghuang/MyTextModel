@@ -25,6 +25,23 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 # ============================================================
 
 # ============================================================
+# TTS backend（默认云端 ElevenLabs；本地 Coqui 仅在显式开启时加载）
+# ============================================================
+TTS_BACKEND = "elevenlabs"  # "elevenlabs" | "coqui"
+
+# ElevenLabs：在控制台克隆音色后复制 Voice ID；API Key 可在账户页面生成。
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
+ELEVENLABS_VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "").strip()
+
+# 常用模型：eleven_multilingual_v2（中英等多语）；eleven_turbo_v2_5（更快）。
+ELEVENLABS_MODEL_ID = "eleven_multilingual_v2"
+ELEVENLABS_TIMEOUT_SEC = 120
+ELEVENLABS_STABILITY = 0.5
+ELEVENLABS_SIMILARITY_BOOST = 0.75
+ELEVENLABS_STYLE = 0.0
+ELEVENLABS_USE_SPEAKER_BOOST = True
+
+# ============================================================
 # Coqui TTS (XTTS-v2) - Local Voice Clone Settings
 # ============================================================
 # XTTS-v2 clones your voice from a short reference audio file.

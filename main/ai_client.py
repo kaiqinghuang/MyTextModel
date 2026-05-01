@@ -1,33 +1,48 @@
 """
-AI Client - OpenAI 纯文本问答 + Coqui XTTS-v2 本地克隆声。
+AI Client - OpenAI 纯文本问答 + TTS（ElevenLabs API 或 Coqui XTTS-v2 本地克隆）。
 
 Flow per turn:
   1. 将「问句文本」发往 OpenAI 聊天补全得到英文复述问句（不经过音频 API）。
-  2. 将该英文文本送入 Coqui XTTS-v2 合成并扬声器播放。
+  2. 将该文本送入配置的 TTS 后端合成并扬声器播放。
 
-Voice cloning approach:
-  - On startup, the reference voice WAV is analyzed ONCE to extract speaker
-    embeddings (gpt_cond_latent + speaker_embedding).
-  - These cached embeddings are reused for every synthesis call.
-  - No re-analysis of the reference audio on each sentence.
+Voice backends（config.TTS_BACKEND）：
+  - elevenlabs：云端克隆（需在控制台创建 Voice，填入 voice_id）。
+  - coqui：本地 XTTS-v2；Torch/TTS 仅在选用该后端时延迟加载。
 """
 
 import io
+import json
 import os
-import wave
 import tempfile
+import urllib.error
+import urllib.request
+import wave
+
 import numpy as np
-import torch
 
 from openai import OpenAI
 
 import config
+
+_coqui_torch_patches_done = False
+
+
+def _ensure_coqui_torch_patches() -> None:
+    """仅在加载本地 Coqui 模型前执行一次，避免 elevenlabs 模式 import 即加载 Torch。"""
+    global _coqui_torch_patches_done
+    if _coqui_torch_patches_done:
+        return
+    _patch_torch_load_for_coqui_tts()
+    _patch_torchaudio_load_via_soundfile()
+    _coqui_torch_patches_done = True
 
 
 def _patch_torch_load_for_coqui_tts() -> None:
     """PyTorch 2.6+ 将 torch.load 默认改为 weights_only=True；Coqui XTTS 的 checkpoint
     需反序列化含 XttsConfig 等类的 pickle，必须允许完整载入。仅对未显式传 weights_only 的调用补默认值。
     """
+    import torch
+
     _orig_load = torch.load
 
     def _load(*args, **kwargs):  # type: ignore[misc]
@@ -35,9 +50,6 @@ def _patch_torch_load_for_coqui_tts() -> None:
         return _orig_load(*args, **kwargs)
 
     torch.load = _load  # noqa: WPS442
-
-
-_patch_torch_load_for_coqui_tts()
 
 
 def _patch_torchaudio_load_via_soundfile() -> None:
@@ -67,6 +79,8 @@ def _patch_torchaudio_load_via_soundfile() -> None:
             and not path_str.startswith(("http://", "https://"))
         )
 
+        import torch
+
         if not skip_codec:
             return _orig_load(
                 uri,
@@ -94,9 +108,6 @@ def _patch_torchaudio_load_via_soundfile() -> None:
         return wav, sr
 
     torchaudio.load = _load  # noqa: WPS442
-
-
-_patch_torchaudio_load_via_soundfile()
 
 
 # ============================================================
@@ -157,6 +168,81 @@ class ConversationAI:
 
 
 # ============================================================
+# ElevenLabs: cloud voice (cloned IVoice from dashboard → voice_id)
+# ============================================================
+
+
+class ElevenLabsCloneTTS:
+    """
+    Text-to-speech via ElevenLabs REST API.
+    Returns MPEG audio bytes (typically MP3); AudioPlayer.play_bytes decodes via pydub when needed.
+
+    Clone workflow (outside this repo): ElevenLabs dashboard → Voices → Instant Voice Clone,
+    upload samples → copy Voice ID into config / .env.
+    """
+
+    def __init__(self) -> None:
+        key = (getattr(config, "ELEVENLABS_API_KEY", None) or "").strip()
+        vid = (getattr(config, "ELEVENLABS_VOICE_ID", None) or "").strip()
+        if not key:
+            raise ValueError(
+                "ElevenLabs 需要 API Key：在 .env 设置 ELEVENLABS_API_KEY "
+                "或在 config.py 中赋值。\n"
+                "See https://elevenlabs.io/"
+            )
+        if not vid:
+            raise ValueError(
+                "ElevenLabs 需要 voice_id：在控制台创建克隆音色后复制 Voice ID，"
+                "写入 .env 的 ELEVENLABS_VOICE_ID 或 config.ELEVENLABS_VOICE_ID。"
+            )
+        self._api_key = key
+        self._voice_id = vid
+        self._model_id = getattr(config, "ELEVENLABS_MODEL_ID", "eleven_multilingual_v2")
+        self._timeout = float(getattr(config, "ELEVENLABS_TIMEOUT_SEC", 120))
+
+    def synthesize(self, text: str, language: str | None = None) -> bytes:
+        del language  # multilingual model infers language from text
+        text = (text or "").strip()
+        if not text:
+            raise ValueError("Empty text for ElevenLabs TTS")
+
+        preview = text[:80] + ("..." if len(text) > 80 else "")
+        print(f'    [elevenlabs] Synthesizing ({self._model_id}): "{preview}"')
+
+        url = f"https://api.elevenlabs.io/v1/text-to-speech/{self._voice_id}"
+        payload = {
+            "text": text,
+            "model_id": self._model_id,
+            "voice_settings": {
+                "stability": float(getattr(config, "ELEVENLABS_STABILITY", 0.5)),
+                "similarity_boost": float(getattr(config, "ELEVENLABS_SIMILARITY_BOOST", 0.75)),
+                "style": float(getattr(config, "ELEVENLABS_STYLE", 0.0)),
+                "use_speaker_boost": bool(getattr(config, "ELEVENLABS_USE_SPEAKER_BOOST", True)),
+            },
+        }
+        req = urllib.request.Request(
+            url,
+            data=json.dumps(payload).encode("utf-8"),
+            method="POST",
+            headers={
+                "xi-api-key": self._api_key,
+                "Content-Type": "application/json",
+                "Accept": "audio/mpeg",
+            },
+        )
+
+        try:
+            with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+                audio = resp.read()
+        except urllib.error.HTTPError as e:
+            detail = e.read().decode("utf-8", errors="replace")
+            raise RuntimeError(f"ElevenLabs HTTP {e.code}: {detail}") from e
+
+        print(f"    [elevenlabs] Received {len(audio)} bytes (audio/mpeg).")
+        return audio
+
+
+# ============================================================
 # Coqui XTTS-v2: Text -> Cloned Voice Audio (local)
 # ============================================================
 
@@ -166,7 +252,7 @@ class VoiceCloneTTS:
 
     Voice cloning workflow:
       1. On __init__, load the XTTS-v2 model
-      2. Analyze reference_voice.wav ONCE to extract speaker embeddings
+      2. Analyze susie_reference_voice.wav ONCE to extract speaker embeddings
       3. Cache the embeddings (gpt_cond_latent + speaker_embedding)
       4. Every synthesize() call reuses the cached embeddings directly
          -- no re-reading of reference audio, no re-computation
@@ -175,6 +261,8 @@ class VoiceCloneTTS:
     """
 
     def __init__(self):
+        _ensure_coqui_torch_patches()
+
         self.model = None
         self._tts_model = None  # underlying XTTS model for direct inference
         self.reference_wav = self._resolve_reference_path()
@@ -201,7 +289,7 @@ class VoiceCloneTTS:
                 f"  {path}\n"
                 f"Tip: Use 'python -c \"import sounddevice as sd; import soundfile as sf; "
                 f"audio = sd.rec(int(10*16000), samplerate=16000, channels=1, dtype=\\\"int16\\\"); "
-                f"sd.wait(); sf.write(\\\"reference_voice.wav\\\", audio, 16000)\"' "
+                f"sd.wait(); sf.write(\\\"susie_reference_voice.wav\\\", audio, 16000)\"' "
                 f"to record 10 seconds."
             )
         return path
@@ -325,3 +413,16 @@ class VoiceCloneTTS:
             wf.writeframes(audio_array.tobytes())
         buf.seek(0)
         return buf.read()
+
+
+def make_tts_backend(backend: str | None = None):
+    """
+    Factory for TTS implementation.
+    backend: override config.TTS_BACKEND; "elevenlabs" | "coqui".
+    """
+    mode = (backend or getattr(config, "TTS_BACKEND", "elevenlabs")).strip().lower()
+    if mode == "coqui":
+        return VoiceCloneTTS()
+    if mode == "elevenlabs":
+        return ElevenLabsCloneTTS()
+    raise ValueError(f"Unknown TTS_BACKEND {mode!r}; use 'coqui' or 'elevenlabs'.")

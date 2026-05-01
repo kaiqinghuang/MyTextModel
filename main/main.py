@@ -3,9 +3,9 @@
 Voice Conversation System — Main Orchestrator
 
 每轮：
-  1. 本地小 GPT 生成 1 句中文问句 → XTTS 经扬声器播出
+  1. 本地小 GPT 生成 1 句中文问句 → TTS（默认 ElevenLabs；可选本地 Coqui）经扬声器播出
   2. **同一问句正文**直连 OpenAI 文本 API（不经麦克风、「听筒」音频模型）
-  3. 将模型返回的文本再 XTTS → 扬声器播放
+  3. 将模型返回的文本再 TTS → 扬声器播放
 
 Usage:
   python main.py                 # 默认无限循环
@@ -15,6 +15,7 @@ Usage:
   python main.py --test-mic      # 测麦克风
   python main.py --test-tts      # 测 Coqui TTS
   python main.py --test-tts --save-tts-dir ./tts_debug  # 第二步：存盘后用系统播放器试听
+  python main.py --tts-backend coqui      # 强制本地 Coqui XTTS（首次加载较慢）
 """
 
 import argparse
@@ -24,7 +25,7 @@ import time
 from pathlib import Path
 
 import config
-from ai_client import ConversationAI, VoiceCloneTTS
+from ai_client import ConversationAI, make_tts_backend
 from audio_manager import AudioRecorder, AudioPlayer
 
 try:
@@ -109,7 +110,7 @@ def run_conversation(
         sys.exit(1)
 
     ai = ConversationAI()
-    tts = VoiceCloneTTS()
+    tts = make_tts_backend()
     player = AudioPlayer()
     pump = PumpTrigger(
         port=getattr(config, "ARDUINO_SERIAL_PORT", ""),
@@ -181,7 +182,7 @@ def run_conversation(
         try:
             reply_audio = tts.synthesize(reply_text)
         except Exception as e:
-            print(f"  [error] Coqui TTS failed: {e}")
+            print(f"  [error] TTS synthesis failed: {e}")
             print(f"          AI said: \"{reply_text}\"")
             continue
 
@@ -216,32 +217,38 @@ def test_microphone() -> None:
     print("[test] Done.")
 
 
-def _save_tts_debug_wav(save_dir: str | None, filename: str, wav_bytes: bytes) -> None:
+def _save_tts_debug_audio(save_dir: str | None, filename: str, audio_bytes: bytes) -> None:
     if not save_dir:
         return
     out_dir = Path(save_dir).expanduser().resolve()
     out_dir.mkdir(parents=True, exist_ok=True)
     path = out_dir / filename
-    path.write_bytes(wav_bytes)
-    print(f"  [test] Saved WAV: {path}")
+    path.write_bytes(audio_bytes)
+    print(f"  [test] Saved: {path}")
 
 
 def test_tts(save_dir: str | None = None) -> None:
-    """Quick test: synthesize short lines with Coqui XTTS-v2; optional WAV export for OS playback."""
-    print("\n[test] Coqui XTTS-v2 TTS test...")
-    print(f"[test] Reference voice: {config.COQUI_REFERENCE_WAV}")
+    """Quick test: synthesize short lines with configured TTS backend."""
+    backend = getattr(config, "TTS_BACKEND", "elevenlabs").strip().lower()
+    ext = ".mp3" if backend == "elevenlabs" else ".wav"
+    print(f"\n[test] TTS test (backend={backend})...")
+    if backend == "coqui":
+        print(f"[test] Reference voice: {config.COQUI_REFERENCE_WAV}")
+    else:
+        vid = (getattr(config, "ELEVENLABS_VOICE_ID", None) or "").strip()
+        print(f"[test] ElevenLabs voice_id: {vid or '(missing — set ELEVENLABS_VOICE_ID)'}")
     if save_dir:
-        print(f"[test] WAV 另存目录: {Path(save_dir).expanduser().resolve()}")
-        print("[test] 请用 Finder 双击或用「音乐」播放这些文件，判断是否仍有滋啦声。\n")
+        print(f"[test] 音频另存目录: {Path(save_dir).expanduser().resolve()}")
+        print("[test] 请用 Finder 双击或用「音乐」播放这些文件。\n")
 
-    tts = VoiceCloneTTS()
+    tts = make_tts_backend()
     player = AudioPlayer()
 
     text = "The morning mist settles gently over the quiet hills."
     print(f"[test] Synthesizing: \"{text}\"")
 
     audio = tts.synthesize(text)
-    _save_tts_debug_wav(save_dir, "step2_en_sentence1.wav", audio)
+    _save_tts_debug_audio(save_dir, f"step2_en_sentence1{ext}", audio)
     print(f"[test] Got {len(audio)} bytes. Playing...")
     player.play_bytes(audio, sample_rate=config.PLAYBACK_SAMPLE_RATE, blocking=True)
     print("[test] Sentence 1 done.")
@@ -249,14 +256,14 @@ def test_tts(save_dir: str | None = None) -> None:
     text2 = "Sometimes the quietest moments hold the deepest meaning."
     print(f"\n[test] Synthesizing second sentence (cached voice)...")
     audio2 = tts.synthesize(text2)
-    _save_tts_debug_wav(save_dir, "step2_en_sentence2.wav", audio2)
+    _save_tts_debug_audio(save_dir, f"step2_en_sentence2{ext}", audio2)
     player.play_bytes(audio2, sample_rate=config.PLAYBACK_SAMPLE_RATE, blocking=True)
     print("[test] Sentence 2 done.")
 
     text_zh = "今天出门前需要带伞吗？"
     print(f"\n[test] 中文问句样本（与会话第一步同语言设定）...")
     audio_zh = tts.synthesize(text_zh, language=config.QUESTION_TTS_LANGUAGE)
-    _save_tts_debug_wav(save_dir, "step2_zh_question.wav", audio_zh)
+    _save_tts_debug_audio(save_dir, f"step2_zh_question{ext}", audio_zh)
     print(f"[test] Playing 中文...")
     player.play_bytes(audio_zh, sample_rate=config.PLAYBACK_SAMPLE_RATE, blocking=True)
     print("[test] Done.")
@@ -291,7 +298,14 @@ def main() -> None:
     parser.add_argument(
         "--test-tts",
         action="store_true",
-        help="Test Coqui XTTS-v2 voice clone synthesis",
+        help="Test configured TTS backend (ElevenLabs or Coqui)",
+    )
+    parser.add_argument(
+        "--tts-backend",
+        type=str,
+        choices=("elevenlabs", "coqui"),
+        default=None,
+        help="覆盖 config.TTS_BACKEND：elevenlabs（默认云端）或 coqui（本地 XTTS）",
     )
     parser.add_argument(
         "--save-tts-dir",
@@ -302,6 +316,9 @@ def main() -> None:
     )
 
     args = parser.parse_args()
+
+    if args.tts_backend:
+        config.TTS_BACKEND = args.tts_backend.strip().lower()
 
     if args.save_tts_dir and not args.test_tts:
         parser.error("--save-tts-dir 仅能配合 --test-tts 使用")

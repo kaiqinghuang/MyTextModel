@@ -24,7 +24,7 @@ TTS>=0.22.0
 # XTTS 依赖旧版 transformers API（BeamSearchScorer）；勿用 transformers 5.x，否则会 ImportError
 transformers>=4.38,<4.46
 
-# Optional: MP3 playback support (requires ffmpeg on system)
+# MP3 playback (ElevenLabs returns MPEG); pydub needs ffmpeg on system
 pydub>=0.25.1
 
 # Optional: Arduino serial trigger for pump control
