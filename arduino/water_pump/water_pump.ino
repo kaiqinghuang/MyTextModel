@@ -1,10 +1,10 @@
 #include <Arduino.h>
 #define DO_PIN 9
-#define DO_PIN_2 10
+#define DO_PIN_2 11
 
 unsigned long pump1OffAt = 0;
 unsigned long pump2OffAt = 0;
-const unsigned long PULSE_MS = 1000;
+const unsigned long PULSE_MS = 300;
 
 void triggerPump(uint8_t pin, unsigned long &offAt)
 {
