@@ -30,7 +30,7 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 # XTTS-v2 clones your voice from a short reference audio file.
 # Record 6-15 seconds of clean speech and save as WAV.
 # Place the file in the project root or provide an absolute path.
-COQUI_REFERENCE_WAV = "reference_voice.wav"
+COQUI_REFERENCE_WAV = "susie_reference_voice.wav"
 
 # XTTS-v2 model name (downloaded automatically on first run)
 COQUI_MODEL_NAME = "tts_models/multilingual/multi-dataset/xtts_v2"
