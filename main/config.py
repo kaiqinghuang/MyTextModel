@@ -114,7 +114,7 @@ PLAYBACK_DEVICE = None
 # Arduino pump trigger settings (optional).
 # Set ARDUINO_SERIAL_PORT to your board port, e.g. "/dev/tty.usbmodem1101".
 # Empty/None disables pump trigger without affecting conversation flow.
-ARDUINO_SERIAL_PORT = ""
+ARDUINO_SERIAL_PORT = "/dev/cu.usbmodem141301"
 ARDUINO_BAUDRATE = 9600
 
 # ============================================================
