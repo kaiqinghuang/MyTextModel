@@ -13,6 +13,7 @@ Voice backends（config.TTS_BACKEND）：
 import io
 import json
 import os
+import ssl
 import tempfile
 import urllib.error
 import urllib.request
@@ -23,6 +24,19 @@ import numpy as np
 from openai import OpenAI
 
 import config
+
+
+def _https_ssl_context() -> ssl.SSLContext:
+    """部分 macOS Python 未带好 CA，urllib 访问 HTTPS 会 CERTIFICATE_VERIFY_FAILED；用 certifi 补上信任链。"""
+    ctx = ssl.create_default_context()
+    try:
+        import certifi
+
+        ctx.load_verify_locations(cafile=certifi.where())
+    except ImportError:
+        pass
+    return ctx
+
 
 _coqui_torch_patches_done = False
 
@@ -232,7 +246,9 @@ class ElevenLabsCloneTTS:
         )
 
         try:
-            with urllib.request.urlopen(req, timeout=self._timeout) as resp:
+            with urllib.request.urlopen(
+                req, timeout=self._timeout, context=_https_ssl_context()
+            ) as resp:
                 audio = resp.read()
         except urllib.error.HTTPError as e:
             detail = e.read().decode("utf-8", errors="replace")
