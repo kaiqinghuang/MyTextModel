@@ -1,0 +1,6 @@
+# 本地 Coqui XTTS-v2 克隆声（可选）。会先安装 requirements.txt，再装 TTS。
+# Intel Mac 若仍卡在 llvmlite：brew install llvm cmake，或只用 ElevenLabs（不配此文件）。
+-r requirements.txt
+
+TTS>=0.22.0
+transformers>=4.38,<4.46

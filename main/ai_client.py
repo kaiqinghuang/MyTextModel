@@ -300,9 +300,9 @@ class VoiceCloneTTS:
             from TTS.api import TTS
         except ImportError:
             raise ImportError(
-                "Coqui TTS not installed. Run:\n"
-                "  pip install TTS\n"
-                "Note: requires Python 3.9-3.11 and PyTorch."
+                "Coqui TTS not installed. From main/ run:\n"
+                "  pip install -r requirements-coqui.txt\n"
+                "(Default ElevenLabs mode uses requirements.txt only.)"
             )
 
         device = config.COQUI_DEVICE

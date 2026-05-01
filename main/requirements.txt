@@ -1,34 +1,24 @@
-# Voice Conversation System - Dependencies
+# Voice Conversation — 默认路径：ElevenLabs TTS + 本地小 GPT 问句（不含 Coqui）
+# Intel Mac 上若装整套 Coqui（TTS），会拖入 librosa→numba→llvmlite，常需本地编译 LLVM。
+# 仅在用「本地克隆声」时再安装：pip install -r requirements-coqui.txt
 
 # Audio I/O
 sounddevice>=0.4.6
 soundfile>=0.12.1
-# TTS 0.22 在 Python<=3.10 会约束 numpy==1.22.0；这里用环境标记避免冲突
 numpy==1.22.0; python_version <= "3.10"
 numpy>=1.24.0; python_version >= "3.11"
-# 读 WAV 由 ai_client 内对 torchaudio.load 的 soundfile 补丁处理，通常无需 torchcodec/系统 FFmpeg
 
-# OpenAI API key from .env (optional)
 python-dotenv>=1.0.0
-
-# OpenAI API (audio input support)
 openai>=1.30.0
 
-# 小 GPT 问句生成（tokenizer.model / QuestionStructureGenerator）
+# 小 GPT 问句生成（QuestionStructureGenerator）
 sentencepiece>=0.2.0
+torch>=2.0.0
 
-# Coqui TTS - local voice cloning with XTTS-v2
-# Requires Python 3.9-3.11 and PyTorch
-# Note: this will install PyTorch as a dependency (~2 GB)
-TTS>=0.22.0
-# XTTS 依赖旧版 transformers API（BeamSearchScorer）；勿用 transformers 5.x，否则会 ImportError
-transformers>=4.38,<4.46
-
-# MP3 playback (ElevenLabs returns MPEG); pydub needs ffmpeg on system
+# MP3 回放（ElevenLabs 返回 MPEG）；系统需安装 ffmpeg
 pydub>=0.25.1
 
-# Optional: Arduino serial trigger for pump control
 pyserial>=3.5
 
-# Optional: generate test audio slots (needs internet)
+# Optional: setup_slots 等脚本
 gTTS>=2.3.0
