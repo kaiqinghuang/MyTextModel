@@ -4,7 +4,7 @@
 
 unsigned long pump1OffAt = 0;
 unsigned long pump2OffAt = 0;
-const unsigned long PULSE_MS = 2000;
+const unsigned long PULSE_MS = 4000; // each trigger keeps pump ON for 4s
 
 void triggerPump(uint8_t pin, unsigned long &offAt)
 {
@@ -24,8 +24,8 @@ void setup()
 void loop()
 {
 	// Command protocol from Python:
-	// "P1\n" => pulse DO_PIN for 1 second
-	// "P2\n" => pulse DO_PIN_2 for 1 second
+	// "1\n" => pulse DO_PIN for PULSE_MS
+	// "2\n" => pulse DO_PIN_2 for PULSE_MS
 	if (Serial.available() > 0)
 	{
 		char cmd = Serial.read();
