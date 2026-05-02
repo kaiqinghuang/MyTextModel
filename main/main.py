@@ -160,11 +160,6 @@ def run_conversation(
             print(f"  [error] 问句播放失败: {e}")
             continue
 
-        pause_cn = float(getattr(config, "PAUSE_AFTER_CN_QUESTION_SEC", 0.0) or 0.0)
-        if pause_cn > 0:
-            print(f"  [...] 中文播报与后续英文之间停顿 {pause_cn:g}s")
-            time.sleep(pause_cn)
-
         # ---------- Step 2: 同一问句文本 → OpenAI（纯文本，非音频预览模型） ----------
         print(f"\n  [step 2] Sending question text to OpenAI...")
         try:
@@ -192,14 +187,19 @@ def run_conversation(
             continue
 
         print(f"\n  [step 4] Playing AI response...")
+        english_played_ok = False
         try:
             # OpenAI 问句开始发声时，触发 DO_PIN_2(10) 1s 脉冲
             pump.trigger_pump_2()
             player.play_bytes(reply_audio, blocking=True)
+            english_played_ok = True
         except Exception as e:
             print(f"  [error] Playback failed: {e}")
 
-        time.sleep(0.5)
+        pause_en = float(getattr(config, "PAUSE_AFTER_ENGLISH_REPLY_SEC", 0.0) or 0.0)
+        if english_played_ok and pause_en > 0:
+            print(f"  [...] 英文播报结束后停顿 {pause_en:g}s（再进入下一轮）")
+            time.sleep(pause_en)
 
         next_round += 1
 
