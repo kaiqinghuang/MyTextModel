@@ -160,6 +160,11 @@ def run_conversation(
             print(f"  [error] 问句播放失败: {e}")
             continue
 
+        pause_cn = float(getattr(config, "PAUSE_AFTER_CN_QUESTION_SEC", 0.0) or 0.0)
+        if pause_cn > 0:
+            print(f"  [...] 中文播报与后续英文之间停顿 {pause_cn:g}s")
+            time.sleep(pause_cn)
+
         # ---------- Step 2: 同一问句文本 → OpenAI（纯文本，非音频预览模型） ----------
         print(f"\n  [step 2] Sending question text to OpenAI...")
         try:

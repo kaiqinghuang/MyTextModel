@@ -144,3 +144,6 @@ NUM_CONVERSATION_TURNS = 5
 # ============================================================
 # Max conversation history turns to keep in context (each turn = user + assistant)
 MAX_HISTORY_TURNS = 10
+
+# 每轮内：中文问句播完后，到后续 OpenAI / 英文播报前的静默（秒）。0 表示不额外停顿。
+PAUSE_AFTER_CN_QUESTION_SEC = 3.0
