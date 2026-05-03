@@ -1,0 +1,13 @@
+# Intel macOS x86_64 + Python 3.11：在装带 Coqui「TTS」的 requirements 之前先装本文件，
+# 让 pip 使用 PyPI 上的 llvmlite wheel，避免「Failed building wheel for llvmlite」。
+#
+# 用法（在已激活的 .venv 里）：
+#   pip install -U pip setuptools wheel
+#   pip install -r requirements-pre-tts-pins.txt
+#   pip install -r requirements.txt
+#
+# 若你用的是拆分的 requirements-coqui.txt，一般不必再装本文件（coqui 文件里已含同类 pin）。
+
+numpy>=1.24,<2.1; python_version >= "3.11"
+llvmlite==0.43.0
+numba==0.60.0

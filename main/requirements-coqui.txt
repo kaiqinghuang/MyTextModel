@@ -1,6 +1,12 @@
 # 本地 Coqui XTTS-v2 克隆声（可选）。会先安装 requirements.txt，再装 TTS。
-# Intel Mac 若仍卡在 llvmlite：brew install llvm cmake，或只用 ElevenLabs（不配此文件）。
+#
+# Intel Mac + Python 3.11：若 llvmlite 走源码编译失败，下面三行强制用带 wheel 的版本。
+# 若你使用旧 commit「单文件 requirements 内含 TTS」：请先 pip install -r requirements-pre-tts-pins.txt
 -r requirements.txt
+
+numpy>=1.24,<2.1; python_version >= "3.11"
+llvmlite==0.43.0
+numba==0.60.0
 
 TTS>=0.22.0
 transformers>=4.38,<4.46
