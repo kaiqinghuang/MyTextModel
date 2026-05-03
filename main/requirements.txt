@@ -1,6 +1,6 @@
-# Voice Conversation — 默认路径：ElevenLabs TTS + 本地小 GPT 问句（不含 Coqui）
-# Intel Mac 上若装整套 Coqui（TTS），会拖入 librosa→numba→llvmlite，常需本地编译 LLVM。
-# 仅在用「本地克隆声」时再安装：pip install -r requirements-coqui.txt
+# Voice Conversation — 核心依赖（小 GPT + 播放 + 串口等）
+# 默认 TTS 为本地 Coqui：请再执行  pip install -r requirements-coqui.txt
+# 若只用 ElevenLabs、不装 Coqui，可把 config 里 TTS_BACKEND 设为 elevenlabs 并配好 API。
 
 # Audio I/O
 sounddevice>=0.4.6

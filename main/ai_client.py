@@ -436,7 +436,7 @@ def make_tts_backend(backend: str | None = None):
     Factory for TTS implementation.
     backend: override config.TTS_BACKEND; "elevenlabs" | "coqui".
     """
-    mode = (backend or getattr(config, "TTS_BACKEND", "elevenlabs")).strip().lower()
+    mode = (backend or getattr(config, "TTS_BACKEND", "coqui")).strip().lower()
     if mode == "coqui":
         return VoiceCloneTTS()
     if mode == "elevenlabs":

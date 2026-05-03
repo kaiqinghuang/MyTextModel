@@ -25,9 +25,14 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 # ============================================================
 
 # ============================================================
-# TTS backend（默认云端 ElevenLabs；本地 Coqui 仅在显式开启时加载）
+# TTS backend："coqui" 本地克隆 | "elevenlabs" 云端 API（代码两套都保留）
+# 默认本地；临时用云端可改下行，或 .env 写 TTS_BACKEND=elevenlabs，或 --tts-backend elevenlabs
 # ============================================================
-TTS_BACKEND = "elevenlabs"  # "elevenlabs" | "coqui"
+TTS_BACKEND = "coqui"
+if "TTS_BACKEND" in os.environ:
+    _tb = os.environ["TTS_BACKEND"].strip().lower()
+    if _tb in ("coqui", "elevenlabs"):
+        TTS_BACKEND = _tb
 
 # ElevenLabs：在控制台克隆音色后复制 Voice ID；API Key 可在账户页面生成。
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")

@@ -3,7 +3,7 @@
 Voice Conversation System — Main Orchestrator
 
 每轮：
-  1. 本地小 GPT 生成 1 句中文问句 → TTS（默认 ElevenLabs；可选本地 Coqui）经扬声器播出
+  1. 本地小 GPT 生成 1 句中文问句 → TTS（默认本地 Coqui；可选 ElevenLabs API）经扬声器播出
   2. **同一问句正文**直连 OpenAI 文本 API（不经麦克风、「听筒」音频模型）
   3. 将模型返回的文本再 TTS → 扬声器播放
 
@@ -15,7 +15,7 @@ Usage:
   python main.py --test-mic      # 测麦克风
   python main.py --test-tts      # 测 Coqui TTS
   python main.py --test-tts --save-tts-dir ./tts_debug  # 第二步：存盘后用系统播放器试听
-  python main.py --tts-backend coqui      # 强制本地 Coqui XTTS（首次加载较慢）
+  python main.py --tts-backend elevenlabs  # 临时改用云端 ElevenLabs（需 API Key）
 """
 
 import argparse
@@ -234,7 +234,7 @@ def _save_tts_debug_audio(save_dir: str | None, filename: str, audio_bytes: byte
 
 def test_tts(save_dir: str | None = None) -> None:
     """Quick test: synthesize short lines with configured TTS backend."""
-    backend = getattr(config, "TTS_BACKEND", "elevenlabs").strip().lower()
+    backend = getattr(config, "TTS_BACKEND", "coqui").strip().lower()
     ext = ".mp3" if backend == "elevenlabs" else ".wav"
     print(f"\n[test] TTS test (backend={backend})...")
     if backend == "coqui":
@@ -310,7 +310,7 @@ def main() -> None:
         type=str,
         choices=("elevenlabs", "coqui"),
         default=None,
-        help="覆盖 config.TTS_BACKEND：elevenlabs（默认云端）或 coqui（本地 XTTS）",
+        help="覆盖 config.TTS_BACKEND：coqui（默认本地）或 elevenlabs（云端 API）",
     )
     parser.add_argument(
         "--save-tts-dir",
